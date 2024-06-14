@@ -1,81 +1,173 @@
 import streamlit as st
 import json
 import pandas as pd
+import warnings
+import ast
+from streamlit_modal import Modal
 
-# Load data from JSON file
-with open('combined_insights.json', 'r') as f:
-    data = json.load(f)
+warnings.filterwarnings('ignore')
 
-@st.cache_data(show_spinner=False)
-def split_frame(input_df, rows):
-    df = [input_df.loc[i : i + rows - 1, :] for i in range(0, len(input_df), rows)]
-    return df
+# Load data
+per_audio_df = pd.read_csv("per_audio1.csv")
+summary_df = pd.read_csv("summary1.csv", index_col=0)
 
-# Streamlit UI
-st.title('Property Dashboard')
+# Initialize session state
+if 'selected_category' not in st.session_state:
+    st.session_state.selected_category = summary_df.columns[0]
+if 'selected_time_frame' not in st.session_state:
+    st.session_state.selected_time_frame = "April-May"
+if 'selected_subsection' not in st.session_state:
+    st.session_state.selected_subsection = "Summary"  # Default to Summary
+if 'selected_audio' not in st.session_state:
+    st.session_state.selected_audio = None
 
-# Period selection
-period = st.selectbox('Select Period for Insights:', ['March-24 to April-24'], index=0)
+def main():
+    st.title("Real Estate Audio Analysis")
 
-# Category selection
-category = st.selectbox('Select Category', list(data.keys()))
-
-# Display subcategory buttons based on category selection
-if category:
-    st.subheader('Select Subcategory:')
-    subcategories = ['Questions', 'Concerns', 'Emotions', 'Interest']
-
-    # Arrange buttons in columns
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        if col1.button(subcategories[0]):
-            st.session_state.selected_subcategory = subcategories[0]
-    with col2:
-        if col2.button(subcategories[1]):
-            st.session_state.selected_subcategory = subcategories[1]
-    with col3:
-        if col3.button(subcategories[2]):
-            st.session_state.selected_subcategory = subcategories[2]
-    with col4:
-        if col4.button(subcategories[3]):
-            st.session_state.selected_subcategory = subcategories[3]
-
-    # Display data based on subcategory selection in a table with pagination
-    if 'selected_subcategory' in st.session_state:
-        st.subheader(f"{st.session_state.selected_subcategory} related to {category}")
-        st.markdown(f"#### {st.session_state.selected_subcategory.capitalize()} Summary: ")
+    modal = Modal(
+        "Demo Modal", 
+        key="demo-modal",
         
-        bullet_points = data[category][f'{st.session_state.selected_subcategory}_Summary']
-        for point in bullet_points:
-            st.markdown(f"- {point}")
+    )
+    time_frames = ["April-May"]
+    col1, _, _ = st.columns([1, 1, 1])  # Define three columns with equal width
+    with col1:  # Select the second column for the select box
+        selected_time_frame = st.selectbox(
+            "Select Time Frame",
+            time_frames,
+            index=time_frames.index(st.session_state.selected_time_frame),
+            on_change=lambda: st.session_state.update(
+                selected_time_frame=st.session_state["selectbox_time_frame"]
+            ),
+            key="selectbox_time_frame"
+        )
 
-        # Determine data to display based on subcategory
-        if st.session_state.selected_subcategory == 'Questions':
-            subcategory_data = [(question) for i, question in enumerate(data[category]['Questions'])]
-        elif st.session_state.selected_subcategory == 'Concerns':
-            subcategory_data = [(concern) for i, concern in enumerate(data[category]['Concerns'])]
-        elif st.session_state.selected_subcategory == 'Emotions':
-            subcategory_data = [(emotion) for i, emotion in enumerate(data[category]['Emotions'])]
-        elif st.session_state.selected_subcategory == 'Interest':
-            subcategory_data = [(interest) for i, interest in enumerate(data[category]['Interest'])]
+    # Custom CSS for buttons
+    st.markdown(
+        """
+        <style>
+        .section-button>button {
+            background-color: #ADD8E6; /* Light Blue */
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 10px;
+        }
+        .section-button>button:hover {
+            background-color: #B0E0E6; /* Lighter Blue on Hover */
+            color: black;
+        }
+        .audio-button>button {
+            background-color: #FFA07A; /* Light Salmon */
+            border: none;
+            color: white;
+            padding: 8px 16px;  /* Smaller padding for smaller buttons */
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;  /* Smaller font size */
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        .audio-button>button:hover {
+            background-color: #FFA07A; /* Lighter Salmon on Hover */
+            color: black;
+        }
+        .scroll-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
-        dataset = pd.DataFrame(subcategory_data)
-        print(dataset)
-        pagination = st.container()
+    categories = summary_df.columns
+    selected_category = st.selectbox(
+        "Select Category",
+        categories,
+        index=list(categories).index(st.session_state.selected_category),
+        on_change=lambda: st.session_state.update(
+            selected_category=st.session_state["selectbox_category"]
+        ),
+        key="selectbox_category"
+    )
 
-        bottom_menu = st.columns((4, 1, 1))
-        with bottom_menu[2]:
-            batch_size = st.selectbox("Page Size", options=[10, 20, 50,], key='batch_size')
-        with bottom_menu[1]:
-            total_pages = (
-                int(len(subcategory_data) / batch_size) if int(len(subcategory_data) / batch_size) > 0 else 1
-            )
-            current_page = st.number_input(
-                "Page", min_value=1, max_value=total_pages, step=1, key='current_page'
-            )
+    # Create a big container
+    big_container = st.container(height=500)
 
-        with bottom_menu[0]:
-            st.markdown(f"Page **{current_page}** of **{total_pages}** ")
+    with big_container:
+        button_container = st.columns(6)  # Display buttons horizontally
 
-        pagination.dataframe(dataset.iloc[(current_page-1)*batch_size:current_page*batch_size], hide_index=True)
+        # Define variables to track button states
+        button1_state = button_container[0].button(
+            "Audio",
+            key="button1",
+            on_click=lambda: update_button_state("Audio")
+        )
+        button2_state = button_container[1].button(
+            "Summary",
+            key="button2",
+            on_click=lambda: update_button_state("Summary")
+        )
 
+        selected_subsection = st.session_state.selected_subsection
+
+        if selected_subsection == "Summary":
+            sb_df = summary_df[[selected_category]]  # Select the column as a DataFrame
+            st.markdown("<div class='scroll-container'>", unsafe_allow_html=True)
+            for index, row in sb_df.iterrows():
+                with st.expander(index):
+                    summary_points = ast.literal_eval(row[selected_category])['Summary']
+                    for point in summary_points:
+                        st.write(f"- {point.strip()}")
+            st.markdown("</div>", unsafe_allow_html=True)
+        elif selected_subsection == "Audio":
+            # Get unique audio names
+            audio_names = per_audio_df['Audio Name'].unique().tolist()
+            
+            # Create two columns for the audio buttons
+            col1, col2 = st.columns([1, 4])
+            
+            # Distribute the audio names into two columns
+            for i, audio_name in enumerate(audio_names):
+                # if i % 2 == 0:
+                #     if col1.button(audio_name, key=f"audio_{i}", type="secondary"):
+                #         st.session_state.selected_audio = audio_name
+                # else:
+                if col1.button(audio_name, key=f"audio_{i}", type="secondary"):
+                    st.session_state.selected_audio = audio_name
+            
+            with col2:
+                if st.session_state.selected_audio != None:
+                    audio = per_audio_df[(per_audio_df["Audio Name"] == st.session_state.selected_audio) & (per_audio_df["Subcategory"] == selected_category)]
+                    for idx, column in enumerate(['Questions', 'Concerns', 'Emotions','Preferences']):
+                        with st.expander(column):
+                            summary_points = ast.literal_eval(audio[column].iloc[0])
+                            for point in summary_points:
+                                st.write(f"- {point.strip()}")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        print(st.session_state.selected_audio)
+
+def update_button_state(subsection):
+    st.session_state.selected_subsection = subsection
+    if subsection == "Audio":
+        st.session_state.button1_state = True
+        st.session_state.button2_state = False
+    elif subsection == "Summary":
+        st.session_state.button1_state = False
+        st.session_state.button2_state = True
+
+def close_popup():
+    st.session_state.selected_audio = None
+
+if __name__ == "__main__":
+    main()
