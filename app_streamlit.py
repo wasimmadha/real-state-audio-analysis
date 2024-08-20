@@ -203,7 +203,7 @@ def main():
                     st.warning("Please select SubCategory")
                 else:
                     st.write(f"{st.session_state.selected_subcategory} for {st.session_state.selected_category}:")
-
+                    summary_points = None
                     if st.session_state.selected_category == 'All':
                         audio_insights = transcribe[transcribe['audio_name'] == st.session_state.selected_audio]['Insights_new__'].iloc[0]
                         print(ast.literal_eval(audio_insights).keys())
@@ -223,8 +223,9 @@ def main():
                                 summary_points = ast.literal_eval(audio_df[st.session_state.selected_subcategory].iloc[0])
                         except:
                             st.warning(f"No {st.session_state.selected_subcategory} in {st.session_state.selected_category} for {st.session_state.selected_audio}")
-                    for point in summary_points:
-                        st.write(f"- {point.strip()}")
+                    if summary_points:
+                        for point in summary_points:
+                            st.write(f"- {point.strip()}")
 
 def update_button_state(subsection):
     st.session_state.selected_subsection = subsection
