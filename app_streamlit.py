@@ -3,7 +3,6 @@ import json
 import pandas as pd
 import warnings
 import ast
-from streamlit_modal import Modal
 
 warnings.filterwarnings('ignore')
 
